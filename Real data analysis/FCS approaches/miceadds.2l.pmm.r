@@ -37,79 +37,104 @@ A<-A[order(A$id),]
 A<-A[,-2]
 names(A)
 
-################################################
-# empty imputation in mice
-################################################
-imp0 <- mice(A, maxit=0)
-predM <- imp0$predictorMatrix
-impM <- imp0$method
-
 ###############################################
 # specify predictor matrix and imputation Method
 ##############################################
-predM1 <- predM
-predM1["dbp",] <- c(-2,0,1,1,0,1)
-predM1["time",] <- c(-2,0,0,0,0,0)
-predM1["id",] <- c(0,0,0,0,0,0)
-predM1["age",] <- c(-2,0,0,0,0,0)
-predM1["bmi",] <- c(-2,0,1,0,1,1)
-predM1["sex",] <- c(-2,0,0,0,0,0)
-predM1
+# predictor matrix
+vars <- colnames(A)
+V <- length(vars);V
+predmat <- matrix(0, nrow=V, ncol=V)
+rownames(predmat) <- colnames(predmat)<-vars
+predmat["id",] <- c(0,0,0,0,0,0)
+predmat["time",] <- c(-2,0,0,0,0,0)
+predmat["age",] <- c(-2,0,0,0,0,0)
+predmat["dbp", ] <- c(-2,0,1,1,0,1)
+predmat["bmi",] <- c(-2,0,1,0,1,1)
+predmat["sex",] <- c(-2,0,0,0,0,0)
 
-impM1 <- impM
-impM1["dbp"] <- "2l.pan"    #2l.lmer , #2l.norm (heter) , #CART and RF for other variables
-impM1["bmi"] <- "2l.pan"
-impM1
+#imputation methods
+impmeth <- rep("",V)
+names(impmeth) <- vars
+impmeth["dbp"] <- "2l.pmm"
+impmeth["bmi"] <- "2l.pmm"
 
-###########################################
-# Multiple imputation using package mice
-###########################################
-imp <- mice(A, m = 20, predictorMatrix = predM1,Method = impM1, maxit=20,diagnostics=TRUE,seed=1234)
+#imputation with 2l.pmm
+imp<- mice(data=A, method=impmeth,predictorMatrix=predmat, maxit=20, m=20)
+summary(imp)
 
 #######################################
 # plots
 #######################################
-pdf("mice.impplot.DBP.pdf")
+pdf("miceadds.pmm.impplot.DBP.pdf")
 plot(imp)
 dev.off()
 
-pdf("mice.bwplot.DBP.pdf")
+pdf("miceadds.pmm.bwplot.DBP.pdf")
 bwplot(imp)
 dev.off()
 
-pdf("mice.stripplot.DBP.pdf")
+pdf("miceadds.pmm.stripplot.DBP.pdf")
 stripplot(imp)
 dev.off()
 
-pdf("mice.densityplot.DBP.pdf")
+pdf("miceadds.pmm.densityplot.DBP.pdf")
 densityplot(imp)
 dev.off()
 
-pdf("mice.densityplotdbp.DBP.pdf")
+pdf("miceadds.pmm.densityplotdbp.DBP.pdf")
 densityplot(imp, ~dbp|.imp)   #blue is observed, red is imputed
 dev.off()
 
-pdf("mice.densityplotbmi.DBP.pdf")
+pdf("miceadds.pmm.densityplotbmi.DBP.pdf")
 densityplot(imp, ~bmi|.imp)   #blue is observed, red is imputed
 dev.off()
 
+######################################
+#convergency
+######################################
+Rhat.mice(imp)
+
 #######################################
-#Complete data and import to csv file
+#Write complete data 
 #######################################
 data<-complete(imp, action = "long", include = TRUE)
-write.table(data,"mice.DBP.csv",sep=",",col.names=T,row.names=F)
-B<-read.csv("mice.DBP.csv",header=TRUE,na.string="NA")
+write.table(data,"miceadds.pmm.DBP.csv",sep=",",col.names=T,row.names=F)
+B<-read.csv("miceadds.pmm.DBP.csv",header=TRUE,na.string="")
 names(B)
-str(B)
-B<-within(B, sex<-factor(sex))  # sex is a factor
-B$age<-as.numeric(B$age)
-str(B)
 names(B)[names(B) == ".imp"] <- "imp"
 B<-B[ , -2] 
 names(B)
 B<-B[which(B$imp!=0),]
 head(B)
 tail(B)
+str(B)
+age<-B$age
+as_num <- function(age) {
+     age <- as.character(age)
+     age[!is.na(age) & (age=="NA")] <- NA_character_
+     as.numeric(age)}
+age<-as_num(age)
+
+bmi<-B$bmi
+as_num <- function(bmi) {
+     bmi <- as.character(bmi)
+     bmi[!is.na(bmi) & (bmi=="NA")] <- NA_character_
+     as.numeric(bmi)}
+bmi<-as_num(bmi)
+
+dbp<-B$dbp
+as_num <- function(dbp) {
+     dbp <- as.character(dbp)
+     dbp[!is.na(dbp) & (dbp=="NA")] <- NA_character_
+     as.numeric(dbp)}
+dbp<-as_num(dbp)
+sex<-B$sex
+time<-B$time
+id<-B$id
+imp<-B$imp
+B<-as.data.frame(cbind(age,bmi,dbp,sex,time,id,imp))
+B<-within(B, sex<-factor(sex))  # gender is a factor
+str(B)
 
 ##########################
 #split dataset by imp
@@ -224,7 +249,7 @@ which(result3_df==min(result3_df))
 result4_df <- as.data.frame(matrix(ncol=1,nrow=length(list_df))) # make an empty datafram
 colnames(result4_df)<-c("RMSE") #give the dataframe column names
 for (i in 1:length(list_df)){ #run a loop over the dataframes in the list
-mod<-REEMtree(dbp~age +sex+ bmi,random=~1|id,data=list_df[[i]],lme.control=lmeControl(opt ="optim"))
+mod<-REEMtree(dbp~age +sex+ bmi ,random=~1|id,data=list_df[[i]],lme.control=lmeControl(opt ="optim"))
  result4_df[i,]<- sqrt(mean((residuals(mod))^2)) #extract RMSE to dataframe
 rownames(result4_df)[i]<-names(list_df)[i] #assign rowname to results from data used
 }
