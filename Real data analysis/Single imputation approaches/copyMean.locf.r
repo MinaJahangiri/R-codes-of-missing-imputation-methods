@@ -6,19 +6,20 @@ library(REEMtree)
 library(misty)
 library(MuMIn)
 library(merTools)
+library(akmedoids)
 library(longitudinalData)
 set.seed(1234)
 
 #######################################
 # Data preparation 
 #######################################
-setwd("C:/Users/jahangiri/Desktop/New missing")
+setwd("C:/Users/jahangiri/Desktop")
 A<-read.csv("A.csv",header=TRUE)
 A[A==-9]<-NA
 names(A)
 B<-A[,c(1,22:28,57:62,108:113,173:178)]
 names(B)
-n<-nrow(B);n
+n<-length(B$id);n
 str(B)
 B<-within(B, sex<-factor(Gender))  # gender is a factor
 B$id<-as.numeric(as.factor(B$id))
@@ -28,42 +29,42 @@ head(B)
 tail(B)
 
 ##########################################################
-# Imputation for trajectory of bmi variable using copyMean.bisector
+# Imputation for trajectory of bmi variable using copyMean.locf
 ##########################################################
 bmi<-B[,3:8]
 names(bmi)
 head(bmi)
 tail(bmi)
 bmi.traj<-as.matrix(bmi)
-imp.bmi<-imputation(bmi.traj,method="copyMean.bisector",lowerBound="globalMin",upperBound="globalMax")
+imp.bmi<-imputation(bmi.traj,method="copyMean.locf",lowerBound="globalMin",upperBound="globalMax")
 bmi<-as.data.frame(imp.bmi)
 colnames(bmi)<-c("bmi1","bmi2","bmi3","bmi4","bmi5","bmi6")
 head(bmi)
 tail(bmi)
 
 ##########################################################
-# Imputation for trajectory of dbp variable using copyMean.bisector
+# Imputation for trajectory of dbp variable using copyMean.locf
 ##########################################################
 dbp<-B[,9:14]
 names(dbp)
 head(dbp)
 tail(dbp)
 dbp.traj<-as.matrix(dbp)
-imp.dbp<-imputation(dbp.traj,method="copyMean.bisector",lowerBound="globalMin",upperBound="globalMax")
+imp.dbp<-imputation(dbp.traj,method="copyMean.locf",lowerBound="globalMin",upperBound="globalMax")
 dbp<-as.data.frame(imp.dbp)
 colnames(dbp)<-c("dbp1","dbp2","dbp3","dbp4","dbp5","dbp6")
 head(dbp)
 tail(dbp)
 
 ##########################################################
-# Imputation for trajectory of sbp variable using copyMean.bisector
+# Imputation for trajectory of sbp variable using copyMean.locf
 ##########################################################
 sbp<-B[,15:20]
 names(sbp)
 head(sbp)
 tail(sbp)
 sbp.traj<-as.matrix(sbp)
-imp.sbp<-imputation(sbp.traj,method="copyMean.bisector",lowerBound="globalMin",upperBound="globalMax")
+imp.sbp<-imputation(sbp.traj,method="copyMean.locf",lowerBound="globalMin",upperBound="globalMax")
 sbp<-as.data.frame(imp.sbp)
 colnames(sbp)<-c("sbp1","sbp2","sbp3","sbp4","sbp5","sbp6")
 head(sbp)
@@ -141,4 +142,5 @@ MAD<- mean(abs(residuals.tree));MAD
 Deviance<- -2*(logLik.REEMtree(fit.tree));Deviance
 plot.REEMtree(fit.tree,text=TRUE)
 tree(fit.tree)
+
 
