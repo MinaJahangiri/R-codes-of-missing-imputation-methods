@@ -1,11 +1,14 @@
 #########Load packages
-library(hmi)
-library(mice)
+library(JointAI)
+library(ggpubr)
+library(ggplot2)
+library(foreign)
 library(lme4)
 library(geepack)
 library(REEMtree)
 library(MuMIn)
 library(merTools)
+library(akmedoids)
 library(longitudinalData)
 
 #######################################
@@ -31,37 +34,91 @@ A$id<-as.numeric(as.factor(A$id))
 str(A)
 A<-A[order(A$id),]
 
-############# Hierarchical Multilevel Imputation using package hmi and outlier detection and replacement using akmedoids package
-model<-dbp ~ age + sex + bmi + (1 |id)
+###################################################### 
+#Multiple Imputation using package JointAI 
+###################################################### 
 
-imp<-hmi(data=A,model_formula=model,m = 20, nitt =22000,burnin = 5000)
+imp<-lmer_imp(dbp ~ age + sex + bmi, data=A, random = ~ 1 | id, n.chains = 3, n.adapt = 100, n.iter = 5000, monitor_params = c(imps = TRUE),thin = 1, seed = 1234)
 
-# Geweke for Checking the chains on convergence
-pdf("hmi.DBP.pdf")
-chaincheck(imp, alpha = 0.01, thin = 1, plot=TRUE)
+####################################################
+#Gelman-Rubin criterion, MC error and plots for convergence
+####################################################
+GR_crit(imp, confidence = 0.95, transform = FALSE, autoburnin = TRUE,
+multivariate = TRUE, warn = TRUE, mess = TRUE)
+
+GR_crit(imp, confidence = 0.95, transform = TRUE, autoburnin = TRUE,
+multivariate = TRUE, warn = TRUE, mess = TRUE)
+
+MC_error(imp)
+
+pdf("JointAI.DBP.MC.pdf")
+plot(MC_error(imp), ablinepars = list(lty = 2),plotpars = list(pch = 19, col ='blue'))
 dev.off()
 
-pdf("hmi5.DBP.pdf")
-chaincheck(imp, alpha = 0.05, thin = 1, plot=TRUE)
+pdf("JointAI.DBP.imp.pdf")
+plot(imp)
 dev.off()
 
-########################################
-#write data
-########################################
-data<-complete(imp, "long", include = TRUE)
-write.table(data,"hmi.DBP.csv",sep=",",col.names=T,row.names=F)
-B<-read.csv("hmi.DBP.csv",header=TRUE,na.strings="NA")
+pdf("JointAI.DBP.imp.ggplot.pdf")
+JointAI::traceplot(imp, use_ggplot = TRUE)
+dev.off()
+
+##################################
+#Plot the posterior density
+##################################
+
+pdf("JointAI.DBP.density.pdf")
+densplot(imp)
+dev.off()
+
+pdf("JointAI.DBP.density.ggplot.pdf")
+densplot(imp, use_ggplot = TRUE)
+dev.off()
+
+pdf("JointAI.DBP.density.new.pdf")
+res <- rbind(summary(imp)$res$y$regcoef[, c('Mean','2.5%','97.5%')],summary(imp)$res$y$sigma[, c('Mean','2.5%','97.5%'),drop = FALSE])
+densplot(imp, vlines = list(list(v = res[, "Mean"], lty = 1, lwd = 2),list(v = res[, "2.5%"], lty = 2),list(v = res[, "97.5%"], lty = 2)))
+dev.off()
+
+#########################################
+#Obtain a summary of the missing values 
+#########################################
+get_missinfo(imp)
+
+#######################################
+#Extract multiple imputed datasets
+#######################################
+B<-get_MIdat(imp, m = 20, include = TRUE, minspace = 50,seed = 1234)
 names(B)
-str(B)
-B<-within(B, sex<-factor(sex))  # sex is a factor
-str(B)
-names(B)[names(B) == ".imp"] <- "imp"
-B<-B[ , -c(2,4)] 
-B<-B[which(B$imp!=0),]
-names(B)
-str(B)
 head(B)
 tail(B)
+
+#######################################
+#Plot the distribution of observed and imputed values
+#######################################
+pdf("JointAI.DBP.distr.pdf")
+plot_imp_distr(get_MIdat(imp, m = 20, include = TRUE, minspace = 50,seed = 1234), imp = "Imputation_", id = "id", rownr = ".rownr")
+dev.off()
+
+#######################################
+#Read and write imputed datasets
+#######################################
+
+names(B)[names(B) == "Imputation_"] <- "imp"
+names(B)
+write.table(B,"JointAI.DBP.csv",sep=",", col.names=T, row.names=F)
+B<-read.csv("JointAI.DBP.csv",header=TRUE,na.strings="NA")
+B<-B[which(B$imp!=0),]
+head(B)
+tail(B)
+
+#######################################
+# Summary of imputation
+#######################################
+parameters(imp)
+summary(imp, missinfo = TRUE)
+coef(imp)
+confint(imp)
 
 ##########################
 #split dataset by imp

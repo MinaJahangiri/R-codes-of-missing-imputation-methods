@@ -1,17 +1,20 @@
 #########Load packages
-library(hmi)
-library(mice)
+library(jomo)
+library(mitml)
+library(mitools)
 library(lme4)
 library(geepack)
 library(REEMtree)
 library(MuMIn)
 library(merTools)
+library(akmedoids)
 library(longitudinalData)
+library(foreign)
+set.seed(1234)
 
 #######################################
 # Data preparation
 #######################################
-set.seed(1234)
 A<-read.csv("A.csv",header=TRUE)
 A[A==-9]<-NA
 names(A)
@@ -31,42 +34,48 @@ A$id<-as.numeric(as.factor(A$id))
 str(A)
 A<-A[order(A$id),]
 
-############# Hierarchical Multilevel Imputation using package hmi and outlier detection and replacement using akmedoids package
-model<-dbp ~ age + sex + bmi + (1 |id)
+############################################
+# Multiple imputation using pan.mitml
+############################################
+formula<-dbp+age+bmi+sex~1+(1|id)
 
-imp<-hmi(data=A,model_formula=model,m = 20, nitt =22000,burnin = 5000)
+imp<-panImpute(data=A, formula=formula, n.burn=100,n.iter=100, m=2,seed=1234)
 
-# Geweke for Checking the chains on convergence
-pdf("hmi.DBP.pdf")
-chaincheck(imp, alpha = 0.01, thin = 1, plot=TRUE)
+#convergency
+summary(imp)
+
+pdf("mitml.pan.DBP.export")
+plot(imp,trace="all",export="pdf")   # trace="imputation"
 dev.off()
 
-pdf("hmi5.DBP.pdf")
-chaincheck(imp, alpha = 0.05, thin = 1, plot=TRUE)
+pdf("mitml.pan.DBP.pdf")
+plot(imp,trace="all",export="none")   # trace="imputation"
 dev.off()
 
-########################################
+#######################################
 #write data
-########################################
-data<-complete(imp, "long", include = TRUE)
-write.table(data,"hmi.DBP.csv",sep=",",col.names=T,row.names=F)
-B<-read.csv("hmi.DBP.csv",header=TRUE,na.strings="NA")
+#######################################
+#a list containing the imputed data sets
+implist <- mitmlComplete(imp, print="all")
+#write data
+A<-write.mitmlSAV(implist, filename="mitml.pan.DBP.sav")
+A<-write.table(read.spss("mitml.pan.DBP.sav"), file="mitml.pan.DBP.csv", quote = TRUE, col.names=T,row.names=F,sep = ",")
+B<-read.csv("mitml.pan.DBP.csv",header=TRUE, na.string ="NA")
 names(B)
 str(B)
-B<-within(B, sex<-factor(sex))  # sex is a factor
+B<-B[ , -7] 
+B<-within(B, sex<-factor(sex))   # sex is a factor
 str(B)
-names(B)[names(B) == ".imp"] <- "imp"
-B<-B[ , -c(2,4)] 
-B<-B[which(B$imp!=0),]
+names(B)[names(B) == "Imputation_"] <- "imp"
+B$imp<-B$imp+1
 names(B)
-str(B)
 head(B)
 tail(B)
 
 ##########################
 #split dataset by imp
 ##########################
-list_df <- split(B, B$imp)
+list_df <- split(B, B$imp) 
 
 ################################################
 #lmer

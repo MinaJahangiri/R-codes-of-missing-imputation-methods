@@ -1,17 +1,20 @@
 #########Load packages
-library(hmi)
-library(mice)
+library(jomo)
+library(mitml)
+library(mitools)
 library(lme4)
 library(geepack)
 library(REEMtree)
 library(MuMIn)
 library(merTools)
+library(akmedoids)
 library(longitudinalData)
+library(foreign)
+set.seed(1234)
 
 #######################################
 # Data preparation
 #######################################
-set.seed(1234)
 A<-read.csv("A.csv",header=TRUE)
 A[A==-9]<-NA
 names(A)
@@ -31,42 +34,43 @@ A$id<-as.numeric(as.factor(A$id))
 str(A)
 A<-A[order(A$id),]
 
-############# Hierarchical Multilevel Imputation using package hmi and outlier detection and replacement using akmedoids package
-model<-dbp ~ age + sex + bmi + (1 |id)
+############################################
+# Multiple imputation using jomo.smc.het
+############################################
+formula<-as.formula(dbp~age+sex+bmi+(1|id))
 
-imp<-hmi(data=A,model_formula=model,m = 20, nitt =22000,burnin = 5000)
+imp<-jomo.smc(formula,data=A, nburn=5000, nbetween=1000, nimp=20, meth="random",family="gaussian",model="lmer")
 
-# Geweke for Checking the chains on convergence
-pdf("hmi.DBP.pdf")
-chaincheck(imp, alpha = 0.01, thin = 1, plot=TRUE)
+# convergence of the first element of beta
+imp1<-jomo.smc.MCMCchain(formula, data=A,nburn=5000, meth="random", family="gaussian",model="lmer")
+
+pdf("jomo.smc.het.DBP.pdf")
+par(mfrow=c(2,2))
+for(i in 1:4) plot(1:5000,imp1$collectbeta[1,i,],type="l")
 dev.off()
 
-pdf("hmi5.DBP.pdf")
-chaincheck(imp, alpha = 0.05, thin = 1, plot=TRUE)
-dev.off()
-
-########################################
-#write data
-########################################
-data<-complete(imp, "long", include = TRUE)
-write.table(data,"hmi.DBP.csv",sep=",",col.names=T,row.names=F)
-B<-read.csv("hmi.DBP.csv",header=TRUE,na.strings="NA")
+###########################################
+# write data
+###########################################
+write.table(imp,"jomo.smc.het.DBP.csv",sep=",",col.names=T,row.names=F)
+B<-read.csv("jomo.smc.het.DBP.csv",header=TRUE, na.strings ="NA")
+names(B)
+B<-B[,-c(4,8)]
 names(B)
 str(B)
 B<-within(B, sex<-factor(sex))  # sex is a factor
-str(B)
-names(B)[names(B) == ".imp"] <- "imp"
-B<-B[ , -c(2,4)] 
-B<-B[which(B$imp!=0),]
+names(B)[names(B) == "clus"] <- "id"
+names(B)[names(B) == "Imputation"] <- "imp"
 names(B)
 str(B)
+B<-B[which(B$imp!=0),]
 head(B)
 tail(B)
 
 ##########################
 #split dataset by imp
 ##########################
-list_df <- split(B, B$imp)
+list_df <- split(B, B$imp) 
 
 ################################################
 #lmer
